@@ -1,0 +1,50 @@
+{
+  "name": "cozy-corkboard",
+  "version": "1.0.0",
+  "private": true,
+  "author": "cosyh",
+  "description": "a cozy pixel-art corkboard task manager",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "vite build && electron-packager . \"cozy corkboard\" --platform=win32 --arch=x64 --out=release --overwrite --ignore=node_modules/electron-builder --ignore=node_modules/electron-packager --ignore=src"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^36.3.1",
+    "electron-builder": "^26.0.12",
+    "electron-packager": "^17.1.2",
+    "vite": "^5.4.0",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.cozycorkboard.app",
+    "productName": "cozy corkboard",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
