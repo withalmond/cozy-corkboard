@@ -26,7 +26,7 @@ jobs:
           path: release/cozy-corkboard-v*-win-x64.zip
 
   build-mac:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
