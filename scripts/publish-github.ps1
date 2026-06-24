@@ -11,8 +11,13 @@ Write-Host ""
 Write-Host "  Cozy Corkboard - GitHub publish" -ForegroundColor Cyan
 Write-Host ""
 
-gh auth status 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+gh auth status *>$null
+$loggedIn = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevEAP
+
+if (-not $loggedIn) {
     Write-Host "  Opening GitHub login in your browser (one-time)..." -ForegroundColor Yellow
     gh auth login --hostname github.com --git-protocol https --web
     if ($LASTEXITCODE -ne 0) { throw "GitHub login failed or was cancelled" }
