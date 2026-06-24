@@ -1,5 +1,6 @@
 # Publish Cozy Corkboard to GitHub (repo + release)
 # Prerequisite: gh auth login (one time)
+# Mac zip is built on GitHub Actions — run workflow or tag v* for both platforms.
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -25,13 +26,15 @@ if (-not $loggedIn) {
 
 $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
 $version = $pkg.version
-$zipName = "cozy-corkboard-v$version-win-x64.zip"
-$zipPath = Join-Path (Join-Path $Root "release") $zipName
+$winZipName = "cozy-corkboard-v$version-win-x64.zip"
+$macZipName = "cozy-corkboard-v$version-mac-universal.zip"
+$winZipPath = Join-Path (Join-Path $Root "release") $winZipName
+$macZipPath = Join-Path (Join-Path $Root "release") $macZipName
 
-if (-not (Test-Path $zipPath)) {
-    Write-Host "  Zip not found - building release first..." -ForegroundColor Yellow
-    npm run release
-    if ($LASTEXITCODE -ne 0) { throw "release build failed" }
+if (-not (Test-Path $winZipPath)) {
+    Write-Host "  Windows zip not found - building..." -ForegroundColor Yellow
+    npm run release:win
+    if ($LASTEXITCODE -ne 0) { throw "release:win failed" }
 }
 
 $remote = $null
@@ -48,29 +51,41 @@ if (-not $remote) {
 }
 
 Write-Host "[2/2] Creating GitHub release v$version..." -ForegroundColor Yellow
+Write-Host "  Tip: For Mac + Windows together, push tag v$version or run Actions -> Build Release" -ForegroundColor Cyan
+
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 gh release view "v$version" *>$null
 $releaseExists = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = $prevEAP
 
-if ($releaseExists) {
-    Write-Host "  Release v$version already exists - uploading asset..." -ForegroundColor Yellow
-    gh release upload "v$version" $zipPath --clobber
-    if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
-} else {
-    $notes = @"
-## Install (Windows)
+$notes = @"
+## Windows
+1. Download $winZipName
+2. Unzip the Cozy Corkboard folder
+3. Double-click click to run
+SmartScreen? More info, then Run anyway.
 
-1. Download $zipName below
-2. Unzip anywhere
-3. Run click to run.exe
+## Mac (Ventura and newer)
+1. Download $macZipName (from GitHub Actions if not listed yet)
+2. Unzip the Cozy Corkboard folder
+3. Double-click click to run
+Gatekeeper? Right-click, Open, Open.
 
-If Windows SmartScreen appears: More info, then Run anyway.
-
-Each person gets their own private board - data stays on your PC.
+Each person gets their own private board - data stays on your device.
 "@
-    gh release create "v$version" $zipPath --title "Cozy Corkboard v$version" --notes $notes
+
+$assets = @($winZipPath)
+if (Test-Path $macZipPath) { $assets += $macZipPath }
+
+if ($releaseExists) {
+    Write-Host "  Release v$version already exists - uploading assets..." -ForegroundColor Yellow
+    foreach ($asset in $assets) {
+        gh release upload "v$version" $asset --clobber
+        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed for $asset" }
+    }
+} else {
+    gh release create "v$version" @assets --title "Cozy Corkboard v$version" --notes $notes
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
 }
 
@@ -79,7 +94,10 @@ Write-Host ""
 Write-Host "  Done!" -ForegroundColor Green
 Write-Host "  Repo:     $url" -ForegroundColor White
 Write-Host "  Releases: $url/releases" -ForegroundColor White
-Write-Host "  Zip:      release\$zipName" -ForegroundColor White
-Write-Host ""
-Write-Host "  Or upload release\$zipName to Google Drive for the same install experience." -ForegroundColor Cyan
+Write-Host "  Windows:  release\$winZipName" -ForegroundColor White
+if (Test-Path $macZipPath) {
+    Write-Host "  Mac:      release\$macZipName" -ForegroundColor White
+} else {
+    Write-Host "  Mac:      run GitHub Actions 'Build Release' for the Mac zip" -ForegroundColor Yellow
+}
 Write-Host ""

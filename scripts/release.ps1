@@ -18,8 +18,8 @@ Write-Host "  Version: $version" -ForegroundColor Cyan
 Write-Host ""
 
 Write-Host "[1/4] Building production app..." -ForegroundColor Yellow
-npm run electron:build
-if ($LASTEXITCODE -ne 0) { throw "electron:build failed" }
+npm run electron:build:win
+if ($LASTEXITCODE -ne 0) { throw "electron:build:win failed" }
 
 $builtDir = Join-Path (Join-Path $Root "release") $builtFolder
 if (-not (Test-Path (Join-Path $builtDir $exeName))) {
@@ -33,16 +33,8 @@ if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 Copy-Item -Path (Join-Path $builtDir "*") -Destination $stageDir -Recurse -Force
 
-$installTxt = @"
-cozy corkboard
-
-1. Double-click "click to run"
-2. If Windows asks: click More info, then Run anyway
-3. Your board saves automatically on your computer
-
-Need help? Open the Cozy Corkboard folder on GitHub Releases for the full guide.
-"@
-Set-Content -Path (Join-Path $stageDir "START HERE.txt") -Value $installTxt -Encoding UTF8
+$installTxt = Get-Content (Join-Path $Root "scripts\START-HERE-windows.txt") -Raw
+Set-Content -Path (Join-Path $stageDir "START HERE.txt") -Value $installTxt.TrimEnd() -Encoding UTF8
 
 Write-Host "[3/4] Creating zip..." -ForegroundColor Yellow
 $zipPath = Join-Path (Join-Path $Root "release") $zipName

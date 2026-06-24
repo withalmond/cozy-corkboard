@@ -1,0 +1,101 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run release:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: release/cozy-corkboard-v*-win-x64.zip
+
+  build-mac:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: chmod +x scripts/release-mac.sh
+      - run: npm run release:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-zip
+          path: release/cozy-corkboard-v*-mac-universal.zip
+
+  publish-release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect zips
+        id: zips
+        run: |
+          WIN_ZIP="$(find artifacts/windows-zip -name '*.zip' | head -1)"
+          MAC_ZIP="$(find artifacts/mac-zip -name '*.zip' | head -1)"
+          echo "win=$WIN_ZIP" >> "$GITHUB_OUTPUT"
+          echo "mac=$MAC_ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v${VERSION}"
+          WIN_ZIP="${{ steps.zips.outputs.win }}"
+          MAC_ZIP="${{ steps.zips.outputs.mac }}"
+          NOTES_FILE="$(mktemp)"
+          cat > "$NOTES_FILE" <<EOF
+          ## Windows
+          1. Download \`cozy-corkboard-v${VERSION}-win-x64.zip\`
+          2. Unzip the **Cozy Corkboard** folder
+          3. Double-click **click to run**
+          SmartScreen? More info, then Run anyway.
+
+          ## Mac (Ventura and newer)
+          1. Download \`cozy-corkboard-v${VERSION}-mac-universal.zip\`
+          2. Unzip the **Cozy Corkboard** folder
+          3. Double-click **click to run**
+          Gatekeeper? Right-click, Open, Open.
+
+          Each person gets their own private board. Data stays on your device.
+          EOF
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$WIN_ZIP" "$MAC_ZIP" --clobber
+          else
+            gh release create "$TAG" "$WIN_ZIP" "$MAC_ZIP" \
+              --title "Cozy Corkboard v${VERSION}" \
+              --notes-file "$NOTES_FILE"
+          fi

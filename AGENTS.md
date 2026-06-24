@@ -12,92 +12,55 @@ Instructions for Cursor agents preparing, building, and publishing releases.
 | Stack | React 18 + Vite + Electron |
 | Main code | `src/App.jsx` |
 | Electron | `electron/main.js`, `electron/preload.js` |
-| Build tool | **electron-packager** (not electron-builder — fails on Windows symlinks) |
+| Build tool | **electron-packager** (not electron-builder) |
 | Data | `localStorage` key `cozy-corkboard` |
+| Platforms | Windows x64 + Mac universal (Ventura+) |
 
 ---
 
-## Release workflow (run in order)
+## Release workflow
 
-When the user asks to **prep, publish, or push a release**, follow these steps exactly.
+### Option A — Both platforms via GitHub Actions (recommended)
 
-### 1. Pre-flight checks
+1. Bump `package.json` version
+2. Commit and push to `main`
+3. Tag and push: `git tag v{version} && git push origin v{version}`
+4. GitHub Actions **Build Release** runs Windows + Mac in parallel and uploads both zips to Releases
+
+Or trigger manually: **Actions → Build Release → Run workflow**
+
+### Option B — Windows only from dev PC
 
 ```powershell
 cd C:\Users\cosyh\Projects\task-board
-git status
+npm install
+npm run release:win
+npm run publish
 ```
 
-Ensure these are committed (or include in the release commit):
+Mac zip must come from GitHub Actions (cannot build Mac app on Windows).
 
-- `src/App.jsx`
-- `electron/`
-- `public/` (icons: `radio-icon.png`, `music-note-icon.png`, `focus-clock-icon.png`)
-- `package.json`, `package-lock.json`
-- `README.md`, `AGENTS.md`, `scripts/release.ps1`
+---
+
+## Pre-flight checks
+
+Ensure committed:
+
+- `src/App.jsx`, `electron/`, `public/`
+- `scripts/` (release.ps1, release-mac.sh, START-HERE-*.txt)
+- `.github/workflows/release.yml`
+- `package.json`, `README.md`, `AGENTS.md`
 
 Do **not** commit `node_modules/`, `dist/`, or `release/`.
 
-### 2. Bump version (if releasing a new version)
+---
 
-Edit `package.json` → `"version"` (semver, e.g. `1.0.0` → `1.0.1`).
+## Build outputs
 
-### 3. Build release zip
-
-```powershell
-npm install
-npm run release
-```
-
-This runs `electron:build` and creates:
-
-```
-release/cozy-corkboard-v{version}-win-x64.zip
-```
-
-Verify the zip contains `click to run.exe` inside a **Cozy Corkboard** folder and launches correctly:
-
-```powershell
-Start-Process "release\cozy corkboard-win32-x64\click to run.exe"
-```
-
-Smoke-test: board, shop, focus, radio, decorate mode.
-
-### 4. Commit release prep (only when user asks to commit)
-
-```powershell
-git add README.md AGENTS.md scripts/ public/ src/ electron/ package.json package-lock.json vite.config.js index.html .gitignore
-git commit -m "Prepare v{version} release"
-```
-
-Never commit secrets. Never force-push `main`.
-
-### 5. Push to GitHub (when remote exists)
-
-```powershell
-git remote -v
-git push -u origin main
-```
-
-If no remote:
-
-```powershell
-gh repo create cozy-corkboard --private --source=. --push
-# or: git remote add origin https://github.com/USER/cozy-corkboard.git
-```
-
-### 6. Create GitHub Release
-
-```powershell
-$v = (Get-Content package.json | ConvertFrom-Json).version
-gh release create "v$v" "release/cozy-corkboard-v$v-win-x64.zip" `
-  --title "Cozy Corkboard v$v" `
-  --notes "## Install (Windows)`n`n1. Download the zip below`n2. Unzip the Cozy Corkboard folder`n3. Double-click click to run`n`nIf Windows SmartScreen appears: More info → Run anyway."
-```
-
-### 7. Tell the user
-
-Share the GitHub Releases URL or upload the zip to itch.io / Google Drive.
+| Platform | Zip | Inside |
+|----------|-----|--------|
+| Windows | `cozy-corkboard-v{version}-win-x64.zip` | `Cozy Corkboard/click to run.exe` + `START HERE.txt` |
+| Mac | `cozy-corkboard-v{version}-mac-universal.zip` | `Cozy Corkboard/click to run.app` + `START HERE.txt` |
 
 ---
 
@@ -106,31 +69,21 @@ Share the GitHub Releases URL or upload the zip to itch.io / Google Drive.
 | Command | Purpose |
 |---------|---------|
 | `npm run electron:dev` | Dev mode (Vite + Electron) |
-| `npm run electron:build` | Production build + packager folder |
-| `npm run release` | Build + zip for distribution |
-| `npm run build` | Web-only Vite build (`dist/`) |
+| `npm run electron:build:win` | Windows packager folder |
+| `npm run electron:build:mac` | Mac universal `.app` (Mac or CI only) |
+| `npm run release:win` | Windows build + friendly zip |
+| `npm run release:mac` | Mac build + friendly zip |
+| `npm run publish` | Push + GitHub release (Windows zip local; Mac via CI) |
 
 ---
 
 ## Publishing gotchas
 
-- **electron-builder** is in devDependencies but **do not use** for Windows builds — use `electron-packager` via `npm run electron:build`.
-- **SmartScreen**: unsigned `.exe` — document in README; code signing is optional future work.
-- **Port conflicts**: kill stale processes on 5173 before `electron:dev`.
-- **Radio**: requires internet + YouTube iframe API.
-- Only create git commits or push when the **user explicitly asks**.
-
----
-
-## Web deploy (optional)
-
-For a browser version without the floating window:
-
-```powershell
-npm run build
-```
-
-Upload `dist/` to Netlify Drop, Vercel, or GitHub Pages. Note: no custom title bar, data is per-browser.
+- **Mac builds require macOS** — use GitHub Actions `macos-13` runner (Ventura)
+- **Universal binary** — one Mac zip for Intel + Apple Silicon
+- **Unsigned apps** — SmartScreen (Windows) and Gatekeeper (Mac); documented in START HERE files
+- **Parallel CI** — `.github/workflows/release.yml` builds both platforms simultaneously
+- Only commit or push when the user explicitly asks
 
 ---
 
@@ -138,11 +91,17 @@ Upload `dist/` to Netlify Drop, Vercel, or GitHub Pages. Note: no custom title b
 
 ```
 task-board/
-├── src/App.jsx          # entire app UI + logic
-├── electron/main.js     # window config (762×680, frameless, always-on-top)
-├── electron/preload.js  # minimize / close / pin / drag API
-├── public/              # static assets copied to dist
-├── scripts/release.ps1  # build + zip automation
-├── README.md            # user install guide
-└── AGENTS.md            # this file
+├── src/App.jsx
+├── electron/main.js
+├── electron/preload.js
+├── public/
+├── scripts/
+│   ├── release.ps1          # Windows zip
+│   ├── release-mac.sh       # Mac zip
+│   ├── publish-github.ps1
+│   ├── START-HERE-windows.txt
+│   └── START-HERE-mac.txt
+├── .github/workflows/release.yml
+├── README.md
+└── AGENTS.md
 ```

@@ -1,0 +1,7 @@
+cozy corkboard
+
+1. Double-click "click to run"
+2. If Windows asks: click More info, then Run anyway
+3. Your board saves automatically on your computer
+
+Need help? See the full guide on GitHub Releases.

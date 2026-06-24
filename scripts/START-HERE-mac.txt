@@ -1,0 +1,10 @@
+cozy corkboard
+
+1. Double-click "click to run"
+2. If Mac says it cannot verify the developer:
+   right-click "click to run" -> Open -> Open
+3. Your board saves automatically on your computer
+
+Works on macOS Ventura and newer (Intel and Apple Silicon).
+
+Need help? See the full guide on GitHub Releases.
