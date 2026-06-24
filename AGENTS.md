@@ -55,10 +55,10 @@ This runs `electron:build` and creates:
 release/cozy-corkboard-v{version}-win-x64.zip
 ```
 
-Verify the zip contains `cozy corkboard.exe` and launches correctly:
+Verify the zip contains `click to run.exe` inside a **Cozy Corkboard** folder and launches correctly:
 
 ```powershell
-Start-Process "release\cozy corkboard-win32-x64\cozy corkboard.exe"
+Start-Process "release\cozy corkboard-win32-x64\click to run.exe"
 ```
 
 Smoke-test: board, shop, focus, radio, decorate mode.
@@ -92,7 +92,7 @@ gh repo create cozy-corkboard --private --source=. --push
 $v = (Get-Content package.json | ConvertFrom-Json).version
 gh release create "v$v" "release/cozy-corkboard-v$v-win-x64.zip" `
   --title "Cozy Corkboard v$v" `
-  --notes "## Install (Windows)`n`n1. Download the zip below`n2. Unzip anywhere`n3. Run cozy corkboard.exe`n`nIf Windows SmartScreen appears: More info → Run anyway."
+  --notes "## Install (Windows)`n`n1. Download the zip below`n2. Unzip the Cozy Corkboard folder`n3. Double-click click to run`n`nIf Windows SmartScreen appears: More info → Run anyway."
 ```
 
 ### 7. Tell the user

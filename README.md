@@ -8,9 +8,9 @@ A cozy pixel-art corkboard task manager — pin tasks, earn leaves, decorate you
 
 ## Download & install (Windows)
 
-1. **Download** the latest release zip (`cozy-corkboard-vX.X.X-win-x64.zip`) from [Releases](../../releases) or the link your friend shared.
-2. **Unzip** the folder anywhere you like (Desktop, Documents, etc.).
-3. **Open** the folder and double-click **`cozy corkboard.exe`**.
+1. **Download** the latest release zip from [Releases](../../releases) or the link your friend shared.
+2. **Unzip** the **Cozy Corkboard** folder anywhere you like (Desktop, Documents, etc.).
+3. **Double-click `click to run`** — or read **START HERE.txt** in the folder first.
 
 > **Windows SmartScreen warning?**  
 > This app is not code-signed yet. If you see *“Windows protected your PC”*, click **More info** → **Run anyway**. The app is safe — Windows just doesn’t recognize unsigned indie software.

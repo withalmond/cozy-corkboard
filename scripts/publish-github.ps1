@@ -64,7 +64,7 @@ if ($releaseExists) {
 
 1. Download $zipName below
 2. Unzip anywhere
-3. Run cozy corkboard.exe
+3. Run click to run.exe
 
 If Windows SmartScreen appears: More info, then Run anyway.
 

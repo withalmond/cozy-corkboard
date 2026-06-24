@@ -1,4 +1,4 @@
-# Cozy Corkboard — build and zip for Windows release
+# Cozy Corkboard - build and zip for Windows release
 # Usage: npm run release
 
 $ErrorActionPreference = "Stop"
@@ -7,7 +7,9 @@ Set-Location $Root
 
 $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
 $version = $pkg.version
-$appFolder = "cozy corkboard-win32-x64"
+$builtFolder = "cozy corkboard-win32-x64"
+$exeName = "click to run.exe"
+$zipFolderName = "Cozy Corkboard"
 $zipName = "cozy-corkboard-v$version-win-x64.zip"
 
 Write-Host ""
@@ -15,28 +17,45 @@ Write-Host "  Cozy Corkboard release prep" -ForegroundColor Cyan
 Write-Host "  Version: $version" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "[1/3] Building production app..." -ForegroundColor Yellow
+Write-Host "[1/4] Building production app..." -ForegroundColor Yellow
 npm run electron:build
 if ($LASTEXITCODE -ne 0) { throw "electron:build failed" }
 
-$sourceDir = Join-Path (Join-Path $Root "release") $appFolder
-if (-not (Test-Path (Join-Path $sourceDir "cozy corkboard.exe"))) {
-    throw "Expected exe not found at release\$appFolder\cozy corkboard.exe"
+$builtDir = Join-Path (Join-Path $Root "release") $builtFolder
+if (-not (Test-Path (Join-Path $builtDir $exeName))) {
+    throw "Expected exe not found at release\$builtFolder\$exeName"
 }
 
-Write-Host "[2/3] Creating zip..." -ForegroundColor Yellow
+Write-Host "[2/4] Staging friendly download folder..." -ForegroundColor Yellow
+$stageRoot = Join-Path (Join-Path $Root "release") "_zip"
+$stageDir = Join-Path $stageRoot $zipFolderName
+if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
+New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+Copy-Item -Path (Join-Path $builtDir "*") -Destination $stageDir -Recurse -Force
+
+$installTxt = @"
+cozy corkboard
+
+1. Double-click "click to run"
+2. If Windows asks: click More info, then Run anyway
+3. Your board saves automatically on your computer
+
+Need help? Open the Cozy Corkboard folder on GitHub Releases for the full guide.
+"@
+Set-Content -Path (Join-Path $stageDir "START HERE.txt") -Value $installTxt -Encoding UTF8
+
+Write-Host "[3/4] Creating zip..." -ForegroundColor Yellow
 $zipPath = Join-Path (Join-Path $Root "release") $zipName
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-Compress-Archive -Path $sourceDir -DestinationPath $zipPath -CompressionLevel Optimal
+Compress-Archive -Path $stageDir -DestinationPath $zipPath -CompressionLevel Optimal
 
-Write-Host "[3/3] Done!" -ForegroundColor Green
+Write-Host "[4/4] Cleaning staging files..." -ForegroundColor Yellow
+Remove-Item $stageRoot -Recurse -Force
+
 Write-Host ""
-Write-Host "  Folder: release\$appFolder" -ForegroundColor White
-Write-Host "  Zip:    release\$zipName" -ForegroundColor White
+Write-Host "  Done!" -ForegroundColor Green
+Write-Host "  Zip:     release\$zipName" -ForegroundColor White
+Write-Host "  Inside:  $zipFolderName\click to run.exe" -ForegroundColor White
 Write-Host ""
-Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "    1. Test:  Start-Process `"release\$appFolder\cozy corkboard.exe`""
-Write-Host "    2. Push:  git push origin main"
-Write-Host "    3. Release:"
-Write-Host "       gh release create v$version `"release\$zipName`" --title `"Cozy Corkboard v$version`""
+Write-Host "  Test: Start-Process `"release\$builtFolder\$exeName`"" -ForegroundColor Cyan
 Write-Host ""
