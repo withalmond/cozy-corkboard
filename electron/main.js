@@ -7,12 +7,13 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 762,
     height: 680,
-    minWidth: 420,
+    minWidth: 520,
     minHeight: 500,
+    backgroundColor: "#FBF4E4",
     // Floating window behaviour
     alwaysOnTop: true,
     frame: false,          // no OS title bar — we'll draw our own
-    transparent: true,     // lets the rounded corners show through
+    transparent: false,
     resizable: true,
     hasShadow: true,
     // Start centred
@@ -26,7 +27,6 @@ function createWindow() {
 
   if (isDev) {
     win.loadURL("http://localhost:5173");
-    win.webContents.openDevTools({ mode: "detach" });
   } else {
     win.loadFile(path.join(__dirname, "../dist/index.html"));
   }

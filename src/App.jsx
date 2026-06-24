@@ -101,6 +101,22 @@ const SPRITES = {
       ".........",
     ],
   },
+  note: {
+    pal: { d: "#6B5840", y: "#FCE08A" },
+    grid: [
+      "....dd....",
+      "...dddd...",
+      "...dddd...",
+      ".....d....",
+      ".....d....",
+      ".....d....",
+      ".....d....",
+      "....yyy...",
+      "...yyyyy..",
+      "..yyyyy...",
+      ".yyy......",
+    ],
+  },
   heart: {
     pal: { r: "#F4A6C6", d: "#E58FB4" },
     grid: [
@@ -431,6 +447,30 @@ const PXBORDER = (col = SOFT_INK) => ({
   boxShadow: `2px 3px 0 ${SOFT_SHADOW}`,
 });
 
+function TextButton({ children, onClick, disabled, active, color = "#8B795F", style }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: "none",
+        border: "none",
+        padding: "4px 2px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontFamily: FONT_DISPLAY,
+        fontSize: 10,
+        lineHeight: 1.5,
+        color: disabled ? "#A89A7E" : active ? "#6FA84C" : color,
+        userSelect: "none",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function PixelButton({ children, onClick, color = "#FCEEB8", ink = "#7A6346", disabled, style }) {
   const [down, setDown] = useState(false);
   return (
@@ -525,12 +565,17 @@ const FOCUS_PRESETS = [
 
 /* Long-form YouTube streams — id is the part after v= in the URL */
 const RADIO_STATIONS = [
-  { id: "jfKfPfyJRdk", name: "lofi corner",   vibe: "beats to pin tasks to" },
-  { id: "5yx6BWlEVcY", name: "chillhop",     vibe: "jazzy & mellow" },
-  { id: "28KRPhVzCus", name: "sleepy lofi",  vibe: "soft & slow" },
-  { id: "DWcJFNfaw9c", name: "chill beats",  vibe: "24/7 cozy radio" },
-  { id: "rUxyKA_-grg", name: "cozy jazz",    vibe: "coffee shop vibes" },
+  { id: "PLLRRXURicM", name: "upbeat daytime lofi", vibe: "bouncy sunny beats", start: 411 },
+  { id: "rIFDqCYMOAQ", name: "late night lofi",     vibe: "chill mellow beats", start: 149 },
+  { id: "gsVT8-Uc1vY", name: "vintage oldies",      vibe: "crafting, tea sipping or studying" },
+  { id: "YgU261Zlkco", name: "night city phonk",    vibe: "deep coding / dev sessions" },
 ];
+
+const loadRadioVideo = (player, station) => {
+  if (!player?.loadVideoById || !station?.id) return;
+  if (station.start) player.loadVideoById({ videoId: station.id, startSeconds: station.start });
+  else player.loadVideoById(station.id);
+};
 
 const RADIO_PREFS_KEY = "cozy-corkboard-radio";
 
@@ -539,6 +584,7 @@ const DEFAULT_STATE = {
   completed: 0,
   focusSessions: 0,
   focusMinutes: 0,
+  musicSeconds: 0,
   tasks: [],
   decorations: [],
   equippedFrame: "classic",
@@ -553,6 +599,7 @@ const DEFAULT_STATE = {
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const rnd = (a, b) => a + Math.random() * (b - a);
+const clampPct = (v, min = 4, max = 92) => Math.min(max, Math.max(min, v));
 
 /* ============================================================
    APP
@@ -571,6 +618,20 @@ export default function App() {
   const [endTime, setEndTime] = useState(0);
   const [remainingMs, setRemainingMs] = useState(FOCUS_PRESETS[1].min * 60000);
   const [, setTick] = useState(0);
+  const [decorMode, setDecorMode] = useState(false);
+  const mainScrollRef = useRef(null);
+
+  const handleDecorModeChange = (open) => {
+    setDecorMode(open);
+    if (!open && mainScrollRef.current) mainScrollRef.current.scrollTop = 0;
+  };
+
+  useEffect(() => {
+    if (view !== "board") {
+      setDecorMode(false);
+      if (mainScrollRef.current) mainScrollRef.current.scrollTop = 0;
+    }
+  }, [view]);
 
   /* load */
   useEffect(() => {
@@ -685,9 +746,19 @@ export default function App() {
     });
   };
   const equipFrame = (key) => setState((s) => ({ ...s, equippedFrame: key }));
-  const placeDecor = (type) =>
-    setState((s) => ({ ...s, decorations: [...s.decorations, { id: uid(), type, x: rnd(8, 82), y: rnd(8, 78), r: rnd(-12, 12) }] }));
+  const placeDecorAt = (type, x, y) =>
+    setState((s) => ({
+      ...s,
+      decorations: [...s.decorations, { id: uid(), type, x: clampPct(x), y: clampPct(y), r: rnd(-12, 12) }],
+    }));
+  const placeDecor = (type) => placeDecorAt(type, rnd(8, 82), rnd(8, 78));
+  const moveDecor = (id, x, y) =>
+    setState((s) => ({
+      ...s,
+      decorations: s.decorations.map((d) => (d.id === id ? { ...d, x: clampPct(x), y: clampPct(y) } : d)),
+    }));
   const removeDecor = (id) => setState((s) => ({ ...s, decorations: s.decorations.filter((d) => d.id !== id) }));
+  const addMusicSecond = () => setState((s) => ({ ...s, musicSeconds: (s.musicSeconds || 0) + 1 }));
 
   if (!loaded) {
     return (
@@ -702,6 +773,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Press+Start+2P&display=swap');
         * { box-sizing: border-box; }
+        html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
         ::-webkit-scrollbar { display: none; }
         * { scrollbar-width: none; }
         @keyframes popin { 0% { transform: scale(.4) rotate(var(--rot)); opacity: 0; } 70% { transform: scale(1.08) rotate(var(--rot)); } 100% { transform: scale(1) rotate(var(--rot)); opacity: 1; } }
@@ -728,20 +800,28 @@ export default function App() {
         completed={state.completed}
         focusSessions={state.focusSessions}
         focusMinutes={state.focusMinutes}
+        musicSeconds={state.musicSeconds || 0}
         decorCount={state.decorations.length}
         ownedDecor={state.owned.decor.length}
       />
 
-      <div style={{ flex: 1, overflowY: "hidden", padding: "10px 10px 100px" }}>
+      <div
+        ref={mainScrollRef}
+        style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: view === "shop" || view === "radio" || decorMode ? "auto" : "hidden", overflowX: "hidden", padding: "10px 14px 100px", width: "100%", maxWidth: "100%" }}
+      >
         {view === "board" && (
           <Board
             frame={frame}
             tasks={state.tasks}
             decorations={state.decorations}
+            ownedDecor={state.owned.decor}
             completed={state.completed}
             onOpen={(task) => setModal({ mode: "detail", task })}
             onRemoveDecor={removeDecor}
+            onPlaceDecor={placeDecorAt}
+            onMoveDecor={moveDecor}
             onAdd={() => setModal({ mode: "add" })}
+            onDecorModeChange={handleDecorModeChange}
           />
         )}
         {view === "focus" && (
@@ -769,9 +849,12 @@ export default function App() {
             placeDecor={placeDecor}
           />
         )}
-        <div style={{ display: view === "radio" ? "block" : "none" }}>
-          <Radio frame={frame} />
-        </div>
+        {view === "radio" && (
+          <Radio
+            frame={frame}
+            onListenTick={addMusicSecond}
+          />
+        )}
       </div>
 
       <TabBar view={view} setView={setView} frame={frame} />
@@ -807,8 +890,9 @@ function page(frame) {
   return {
     fontFamily: FONT_BODY,
     width: "100%",
-    minHeight: "100%",
-    height: "100vh",
+    maxWidth: "100%",
+    height: "100%",
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
     background:
@@ -876,29 +960,52 @@ function TitleBar() {
   );
 }
 
-function Header({ frame, leaves, completed, focusSessions, focusMinutes, decorCount, ownedDecor }) {
+function Header({ frame, leaves, completed, focusSessions, focusMinutes, musicSeconds, decorCount, ownedDecor }) {
   const [open, setOpen] = useState(false);
+  const [titleHover, setTitleHover] = useState(false);
   const hrs = Math.floor(focusMinutes / 60);
   const mins = focusMinutes % 60;
   const focusLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+  const musicMins = Math.floor((musicSeconds || 0) / 60);
+  const musicHrs = Math.floor(musicMins / 60);
+  const musicLabel = musicHrs > 0 ? `${musicHrs}h ${musicMins % 60}m` : `${musicMins}m`;
 
   const rows = [
     { icon: "heart", label: "tasks done", value: completed },
     { icon: "plant3", label: "focus sessions", value: focusSessions },
-    { icon: "star", label: "time focused", value: focusLabel },
+    { icon: "star", label: "time focused", value: focusLabel, img: "./focus-clock-icon.png" },
+    { icon: "note", label: "music listened", value: musicLabel, img: "./music-note-icon.png" },
     { icon: "flower", label: "decorations placed", value: decorCount },
     { icon: "leaf", label: "leaves", value: leaves },
   ];
 
   return (
-    <div style={{ position: "relative", padding: "10px 12px 6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label="stats"
-        style={{ background: "none", border: "none", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", borderRadius: 10 }}
-      >
-        <div style={{ animation: open ? "none" : "sway 3s ease-in-out infinite" }}><PixelArt name="leaf" scale={4} /></div>
-      </button>
+    <div style={{ position: "relative", padding: "10px 12px 6px", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+      <div style={{ position: "relative" }}>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          aria-label="stats and guide"
+          onMouseEnter={() => setTitleHover(true)}
+          onMouseLeave={() => setTitleHover(false)}
+          style={{
+            background: "none", border: "none", padding: "4px 2px", cursor: "pointer",
+            fontFamily: FONT_DISPLAY, fontSize: 13, lineHeight: 1.3, position: "relative",
+            color: frame.name === "Twilight" ? "#6A6390" : "#8B795F",
+          }}
+        >
+          Cozy Corkboard
+          {titleHover && !open && (
+            <div style={{
+              position: "absolute", top: -26, left: 0, whiteSpace: "nowrap",
+              background: "#FFFBF1", ...PXBORDER(), padding: "4px 7px",
+              fontFamily: FONT_DISPLAY, fontSize: 7, color: "#6FA84C",
+              pointerEvents: "none", zIndex: 50,
+            }}>
+              Click Me!
+            </div>
+          )}
+        </button>
+      </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFBF1", padding: "6px 10px", ...PXBORDER() }}>
         <PixelArt name="leaf" scale={3} />
@@ -910,7 +1017,7 @@ function Header({ frame, leaves, completed, focusSessions, focusMinutes, decorCo
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 90 }} />
           <div
             style={{
-              position: "absolute", top: 58, left: 10, zIndex: 100, width: 260,
+              position: "absolute", top: 42, left: 10, zIndex: 100, width: 260,
               background: "#FFFBF1", ...PXBORDER(), padding: 12,
               animation: "popin .22s ease-out", "--rot": "0deg",
               maxHeight: "70vh", overflowY: "auto",
@@ -922,7 +1029,11 @@ function Header({ frame, leaves, completed, focusSessions, focusMinutes, decorCo
             </div>
             {rows.map((r) => (
               <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px dashed rgba(120,95,70,.16)" }}>
-                <PixelArt name={r.icon} scale={2} />
+                {r.img ? (
+                  <img src={r.img} alt="" draggable={false} style={{ width: 20, height: 20, imageRendering: "pixelated", flexShrink: 0 }} />
+                ) : (
+                  <PixelArt name={r.icon} scale={2} />
+                )}
                 <span style={{ flex: 1, fontSize: 13, color: "#94815E" }}>{r.label}</span>
                 <span style={{ fontFamily: FONT_DISPLAY, fontSize: 11, color: "#6B5840" }}>{r.value}</span>
               </div>
@@ -940,13 +1051,17 @@ function Header({ frame, leaves, completed, focusSessions, focusMinutes, decorCo
                 { icon: "star",    title: "poster task", body: "a bigger card with a checklist. great for multi-step projects. check items off as you go." },
                 { icon: "leaf",    title: "leaves ♡",  body: "earn leaves by completing tasks. quick tasks = +8, poster tasks = +12 and up. spend them in the shop!" },
                 { icon: "flower",  title: "shop",     body: "buy new board colors, note colors, pins, patterns and cute decorations with your leaves." },
-                { icon: "kitty_tuxedo", title: "focus",  body: "a pomodoro-style timer. pick a preset, start a session, earn bonus leaves when you finish." },
+                { img: "./focus-clock-icon.png", title: "focus",  body: "a pomodoro-style timer. pick a preset, start a session, earn bonus leaves when you finish." },
                 { icon: "heart",   title: "radio",   body: "cozy background music from long youtube streams. pick a station, hit play, adjust volume. needs internet." },
-                { icon: "star",    title: "tidy",     body: "appears when you have decorations. click it to enter removal mode — tap any decor's ✕ to remove it. re-place from shop → decor anytime for free." },
-              ].map(({ icon, title, body }) => (
+                { icon: "star",    title: "tidy",     body: "appears when you have decorations. click it to enter removal mode — tap any decor's ✕ to remove it. use + decorate your board below to place or move them anytime." },
+              ].map(({ icon, img, title, body }) => (
                 <div key={title} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px dashed rgba(120,95,70,.12)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                    <PixelArt name={icon} scale={2} />
+                    {img ? (
+                      <img src={img} alt="" draggable={false} style={{ width: 20, height: 20, imageRendering: "pixelated", flexShrink: 0 }} />
+                    ) : (
+                      <PixelArt name={icon} scale={2} />
+                    )}
                     <span style={{ fontFamily: FONT_DISPLAY, fontSize: 8, color: "#6B5840", textTransform: "capitalize" }}>{title}</span>
                   </div>
                   <div style={{ fontSize: 12, color: "#94815E", lineHeight: 1.5, paddingLeft: 4 }}>{body}</div>
@@ -961,22 +1076,146 @@ function Header({ frame, leaves, completed, focusSessions, focusMinutes, decorCo
   );
 }
 
-function Board({ frame, tasks, decorations, completed, onOpen, onRemoveDecor, onAdd }) {
+function DecorPalette({ ownedDecor, placing, onPick }) {
+  const items = DECOR_ITEMS.filter(({ key }) => ownedDecor.includes(key));
+  return (
+    <div style={{ marginTop: 10, padding: 12, background: "#FFFBF1", ...PXBORDER(), width: "100%", boxSizing: "border-box" }}>
+      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 7, color: "#8B795F", marginBottom: 10, textAlign: "center", lineHeight: 1.6 }}>
+        drag onto the board or tap one, then click where you want it ♡
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
+        {items.map(({ key, name }) => (
+          <div
+            key={key}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("application/x-cozy-decor", key);
+              e.dataTransfer.effectAllowed = "copy";
+            }}
+            onClick={() => onPick(placing === key ? null : key)}
+            style={{
+              padding: 8,
+              cursor: "grab",
+              background: placing === key ? "#BFE3AE" : "#FFFBF1",
+              ...PXBORDER(placing === key ? "#6FA84C" : SOFT_INK),
+              borderRadius: 10,
+              userSelect: "none",
+            }}
+          >
+            <PixelArt name={key} scale={3} />
+            <div style={{ fontSize: 10, textAlign: "center", marginTop: 4, textTransform: "capitalize", color: "#6B5840" }}>{name}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Board({ frame, tasks, decorations, ownedDecor, completed, onOpen, onRemoveDecor, onPlaceDecor, onMoveDecor, onAdd, onDecorModeChange }) {
   const [tidy, setTidy] = useState(false);
+  const [decorOpen, setDecorOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [placing, setPlacing] = useState(null);
+  const corkRef = useRef(null);
+  const movingRef = useRef(null);
+  const paletteRef = useRef(null);
+
+  const hasOwnedDecor = ownedDecor.length > 0;
+  const ink = frame.name === "Twilight" ? "#6A6390" : "#8B795F";
+
+  const setDecorMode = (open) => {
+    setDecorOpen(open);
+    onDecorModeChange?.(open);
+  };
+
+  useEffect(() => {
+    if (!decorOpen) return;
+    requestAnimationFrame(() => {
+      paletteRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  }, [decorOpen]);
+
+  const pctFromEvent = (clientX, clientY) => {
+    const rect = corkRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 50, y: 50 };
+    return {
+      x: clampPct(((clientX - rect.left) / rect.width) * 100),
+      y: clampPct(((clientY - rect.top) / rect.height) * 100),
+    };
+  };
+
+  const toggleDecor = () => {
+    setDecorMode(!decorOpen);
+    setTidy(false);
+    setPlacing(null);
+    setDragOver(false);
+  };
+
+  const toggleTidy = () => {
+    setTidy((t) => !t);
+    if (decorOpen) setDecorMode(false);
+    setPlacing(null);
+    setDragOver(false);
+  };
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const m = movingRef.current;
+      if (!m) return;
+      const { x, y } = pctFromEvent(e.clientX - m.ox, e.clientY - m.oy);
+      onMoveDecor(m.id, x, y);
+    };
+    const onUp = () => { movingRef.current = null; };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [onMoveDecor]);
 
   const makeCardProps = (task) => ({
-    onClick: () => onOpen(task),
+    onClick: decorOpen && placing ? undefined : () => onOpen(task),
+    style: decorOpen && placing ? { pointerEvents: "none" } : undefined,
   });
 
+  const handleCorkClick = (e) => {
+    if (!placing) return;
+    const { x, y } = pctFromEvent(e.clientX, e.clientY);
+    onPlaceDecor(placing, x, y);
+    setPlacing(null);
+  };
+
+  const handleCorkDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const type = e.dataTransfer.getData("application/x-cozy-decor");
+    if (!type) return;
+    const { x, y } = pctFromEvent(e.clientX, e.clientY);
+    onPlaceDecor(type, x, y);
+    setPlacing(null);
+  };
+
+  const startMoveDecor = (e, d) => {
+    if (!decorOpen || tidy) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = corkRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const px = rect.left + (d.x / 100) * rect.width;
+    const py = rect.top + (d.y / 100) * rect.height;
+    movingRef.current = { id: d.id, ox: e.clientX - px, oy: e.clientY - py };
+  };
+
   return (
-    <div>
+    <div style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
       {/* sign banner */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "0 2px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: FONT_DISPLAY, fontSize: 10, color: frame.name === "Twilight" ? "#6A6390" : "#8B795F" }}>
           {completed} task{completed === 1 ? "" : "s"} done ♡
         </div>
         {decorations.length > 0 && (
-          <PixelButton color={tidy ? "#BFE3AE" : "#FFFBF1"} onClick={() => setTidy(t => !t)} style={{ fontSize: 8, padding: "6px 9px" }}>
+          <PixelButton color={tidy ? "#BFE3AE" : "#FFFBF1"} onClick={toggleTidy} style={{ fontSize: 8, padding: "6px 9px" }}>
             {tidy ? "✓ done" : "✦ tidy"}
           </PixelButton>
         )}
@@ -990,10 +1229,18 @@ function Board({ frame, tasks, decorations, completed, onOpen, onRemoveDecor, on
           borderRadius: 18,
           border: "3px solid rgba(120,95,70,.32)",
           boxShadow: "3px 5px 0 rgba(138,114,87,.2)",
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
         }}
       >
 
         <div
+          ref={corkRef}
+          onClick={handleCorkClick}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleCorkDrop}
           style={{
             position: "relative",
             minHeight: 360,
@@ -1005,6 +1252,9 @@ function Board({ frame, tasks, decorations, completed, onOpen, onRemoveDecor, on
             borderRadius: 12,
             boxShadow: "inset 0 0 16px rgba(138,114,87,.18)",
             padding: "26px 14px 18px",
+            cursor: placing ? "crosshair" : decorOpen ? "default" : undefined,
+            outline: dragOver ? "3px dashed #6FA84C" : decorOpen ? "2px dashed rgba(111,168,76,.45)" : undefined,
+            outlineOffset: -4,
           }}
         >
           {/* decoration layer */}
@@ -1012,14 +1262,16 @@ function Board({ frame, tasks, decorations, completed, onOpen, onRemoveDecor, on
             <div
               key={d.id}
               onClick={() => tidy && onRemoveDecor(d.id)}
+              onPointerDown={(e) => startMoveDecor(e, d)}
               style={{
                 position: "absolute",
                 left: `${d.x}%`,
                 top: `${d.y}%`,
                 transform: `rotate(${d.r}deg)`,
-                zIndex: tidy ? 10 : 1,
-                cursor: tidy ? "pointer" : "default",
+                zIndex: tidy || decorOpen ? 10 : 1,
+                cursor: tidy ? "pointer" : decorOpen ? "grab" : "default",
                 opacity: tidy ? 1 : 0.92,
+                touchAction: decorOpen ? "none" : undefined,
               }}
             >
               <PixelArt name={d.type} scale={4} />
@@ -1031,17 +1283,21 @@ function Board({ frame, tasks, decorations, completed, onOpen, onRemoveDecor, on
 
           {/* tasks */}
           {tasks.length === 0 && (
-            <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "40px 16px", color: frame.ink }}>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><PixelArt name="flower" scale={5} /></div>
-              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 10, marginBottom: 12 }}>board's empty!</div>
-              <div style={{ fontSize: 14, marginBottom: 16, opacity: .8 }}>pin your first task to get started ♡</div>
-              <div style={{ display: "inline-block" }}>
-                <PixelButton color="#FCEEB8" onClick={onAdd}>+ pin a task</PixelButton>
+            <div style={{
+              position: "absolute", inset: 0, zIndex: 2,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              textAlign: "center", padding: "24px 16px", color: frame.ink,
+              pointerEvents: decorOpen ? "none" : "auto",
+            }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16, marginBottom: 14 }}>board's empty!</div>
+              <div style={{ fontSize: 22, marginBottom: 20, opacity: .8, maxWidth: 280 }}>pin your first task to get started ♡</div>
+              <div style={{ pointerEvents: "auto" }}>
+                <TextButton onClick={onAdd} color={ink}>+ pin a task</TextButton>
               </div>
             </div>
           )}
 
-          <div style={{ position: "relative", zIndex: 2, display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center", alignItems: "flex-start" }}>
+          <div style={{ position: "relative", zIndex: 2, display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center", alignItems: "flex-start", pointerEvents: decorOpen && placing ? "none" : "auto" }}>
             {tasks.map((t) => (t.type === "poster" ? (
               <PosterCard key={t.id} task={t} cardProps={makeCardProps(t)} />
             ) : (
@@ -1052,10 +1308,26 @@ function Board({ frame, tasks, decorations, completed, onOpen, onRemoveDecor, on
 
       </div>
 
-      {tasks.length > 0 && (
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <PixelButton color="#FCEEB8" onClick={onAdd} style={{ fontSize: 10, padding: "10px 24px" }}>+ pin a task</PixelButton>
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 14 }}>
+        {tasks.length > 0 && !decorOpen && (
+          <TextButton onClick={onAdd} color={ink}>+ pin a task</TextButton>
+        )}
+        {!decorOpen && (
+          <TextButton onClick={toggleDecor} disabled={!hasOwnedDecor} color={ink}>
+            + decorate your board
+          </TextButton>
+        )}
+      </div>
+
+      {decorOpen && hasOwnedDecor && (
+        <>
+          <div ref={paletteRef}>
+            <DecorPalette ownedDecor={ownedDecor} placing={placing} onPick={setPlacing} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 12, paddingBottom: 8 }}>
+            <TextButton onClick={toggleDecor} active color={ink}>done</TextButton>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1158,11 +1430,29 @@ function Overlay({ children, onClose }) {
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(74,58,42,.42)", zIndex: 150, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 0 }}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(74,58,42,.42)", zIndex: 150,
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        padding: "0 12px",
+        boxSizing: "border-box",
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", maxWidth: 460, maxHeight: "88vh", overflowY: "auto", background: "#FFFBF1", color: "#6B5840", ...PXBORDER(), borderRadius: "18px 18px 0 0", borderBottom: "none", padding: 16 }}
+        style={{
+          width: "100%",
+          maxWidth: 440,
+          maxHeight: "88vh",
+          overflowY: "auto",
+          overflowX: "hidden",
+          boxSizing: "border-box",
+          background: "#FFFBF1",
+          color: "#6B5840",
+          ...PXBORDER(),
+          borderRadius: "18px 18px 0 0",
+          borderBottom: "none",
+          padding: 16,
+        }}
       >
         {children}
       </div>
@@ -1498,7 +1788,7 @@ const OwnedTag = () => (
    cozy radio (youtube streams)
    ============================================================ */
 
-function Radio({ frame }) {
+function Radio({ frame, onListenTick }) {
   const saved = (() => {
     try { return JSON.parse(localStorage.getItem(RADIO_PREFS_KEY) || "{}"); }
     catch { return {}; }
@@ -1507,13 +1797,17 @@ function Radio({ frame }) {
   const [stationIdx, setStationIdx] = useState(saved.stationIdx ?? 0);
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [volume, setVolume] = useState(saved.volume ?? 60);
   const playerRef = useRef(null);
   const mountRef = useRef(null);
   const stationIdxRef = useRef(stationIdx);
+  const initStarted = useRef(false);
+  const pendingPlay = useRef(false);
+  const onListenTickRef = useRef(onListenTick);
+  onListenTickRef.current = onListenTick;
   stationIdxRef.current = stationIdx;
 
-  const txt = frame.name === "Twilight" ? "#F1ECFB" : "#6B5840";
   const sub = frame.name === "Twilight" ? "#cfc7e6" : "#84714F";
   const station = RADIO_STATIONS[stationIdx] || RADIO_STATIONS[0];
 
@@ -1522,69 +1816,88 @@ function Radio({ frame }) {
   }, [stationIdx, volume]);
 
   useEffect(() => {
-    const createPlayer = () => {
-      if (!mountRef.current || playerRef.current) return;
-      playerRef.current = new window.YT.Player(mountRef.current, {
-        height: "1",
-        width: "1",
-        videoId: RADIO_STATIONS[stationIdxRef.current]?.id || RADIO_STATIONS[0].id,
-        playerVars: {
-          autoplay: 0,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          rel: 0,
-        },
-        events: {
-          onReady: (e) => {
-            setReady(true);
-            e.target.setVolume(volume);
-            const id = RADIO_STATIONS[stationIdxRef.current]?.id;
-            if (id) e.target.loadVideoById(id);
-          },
-          onStateChange: (e) => {
-            const YT = window.YT;
-            setPlaying(e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING);
-          },
-        },
-      });
-    };
+    if (!playing) return;
+    const id = setInterval(() => onListenTickRef.current?.(), 1000);
+    return () => clearInterval(id);
+  }, [playing]);
 
-    if (window.YT?.Player) createPlayer();
-    else {
-      const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        prev?.();
-        createPlayer();
-      };
-      if (!document.getElementById("yt-iframe-api")) {
-        const s = document.createElement("script");
-        s.id = "yt-iframe-api";
-        s.src = "https://www.youtube.com/iframe_api";
-        document.body.appendChild(s);
-      }
+  useEffect(() => () => {
+    try { playerRef.current?.destroy?.(); } catch { /* ignore */ }
+    playerRef.current = null;
+    initStarted.current = false;
+  }, []);
+
+  const createPlayer = () => {
+    if (!mountRef.current || playerRef.current) return;
+    playerRef.current = new window.YT.Player(mountRef.current, {
+      height: "1",
+      width: "1",
+      playerVars: {
+        autoplay: 0,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        rel: 0,
+      },
+      events: {
+        onReady: (e) => {
+          setReady(true);
+          setLoading(false);
+          e.target.setVolume(volume);
+          const s = RADIO_STATIONS[stationIdxRef.current];
+          if (s) loadRadioVideo(e.target, s);
+          if (pendingPlay.current) {
+            e.target.playVideo();
+            pendingPlay.current = false;
+          }
+        },
+        onStateChange: (e) => {
+          const YT = window.YT;
+          setPlaying(e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING);
+        },
+      },
+    });
+  };
+
+  const initPlayer = () => {
+    if (playerRef.current || initStarted.current) return;
+    initStarted.current = true;
+    setLoading(true);
+
+    if (window.YT?.Player) {
+      createPlayer();
+      return;
     }
 
-    return () => {
-      try { playerRef.current?.destroy?.(); } catch { /* ignore */ }
-      playerRef.current = null;
-      setReady(false);
-      setPlaying(false);
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      createPlayer();
     };
-  }, []);
+    if (!document.getElementById("yt-iframe-api")) {
+      const s = document.createElement("script");
+      s.id = "yt-iframe-api";
+      s.src = "https://www.youtube.com/iframe_api";
+      document.body.appendChild(s);
+    }
+  };
 
   const loadStation = (idx) => {
     setStationIdx(idx);
     const next = RADIO_STATIONS[idx];
     if (!playerRef.current?.loadVideoById || !ready) return;
-    playerRef.current.loadVideoById(next.id);
+    loadRadioVideo(playerRef.current, next);
     if (playing) playerRef.current.playVideo();
   };
 
   const togglePlay = () => {
-    if (!ready || !playerRef.current) return;
+    if (!ready || !playerRef.current) {
+      pendingPlay.current = true;
+      initPlayer();
+      return;
+    }
     if (playing) playerRef.current.pauseVideo();
     else playerRef.current.playVideo();
   };
@@ -1596,24 +1909,25 @@ function Radio({ frame }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, fontFamily: FONT_DISPLAY, fontSize: 11, color: txt }}>
-        <PixelArt name="heart" scale={3} /> cozy radio ♡
-      </div>
-
       {/* now playing */}
-      <div style={{ background: "#FFFBF1", ...PXBORDER(), padding: "16px 14px", textAlign: "center", marginBottom: 12 }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, animation: playing ? "breathe 2.8s ease-in-out infinite" : "none" }}>
-          <PixelArt name="flower" scale={6} />
+      <div style={{ background: "#FFFBF1", ...PXBORDER(), padding: "12px 14px", textAlign: "center", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, animation: playing ? "breathe 2.8s ease-in-out infinite" : "none" }}>
+          <img
+            src="./radio-icon.png"
+            alt=""
+            draggable={false}
+            style={{ width: 56, height: 56, imageRendering: "pixelated" }}
+          />
         </div>
         <div style={{ fontFamily: FONT_DISPLAY, fontSize: 10, color: "#6B5840", marginBottom: 4 }}>{station.name}</div>
-        <div style={{ fontSize: 13, color: sub, marginBottom: 12 }}>{station.vibe}</div>
-        <PixelButton color={playing ? "#FCEEB8" : "#BFE3AE"} onClick={togglePlay} disabled={!ready} style={{ minWidth: 120, fontSize: 9 }}>
-          {!ready ? "loading…" : playing ? "❚❚ pause" : "▶ play"}
+        <div style={{ fontSize: 12, color: sub, marginBottom: 10 }}>{station.vibe}</div>
+        <PixelButton color={playing ? "#FCEEB8" : "#BFE3AE"} onClick={togglePlay} disabled={loading} style={{ minWidth: 120, fontSize: 9 }}>
+          {loading ? "loading…" : playing ? "❚❚ pause" : "▶ play"}
         </PixelButton>
       </div>
 
       {/* volume */}
-      <div style={{ background: "#FFFBF1", ...PXBORDER(), padding: "12px 14px", marginBottom: 12 }}>
+      <div style={{ background: "#FFFBF1", ...PXBORDER(), padding: "10px 14px", marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontFamily: FONT_DISPLAY, fontSize: 8, color: sub }}>
           <span>volume</span>
           <span>{volume}%</span>
@@ -1648,7 +1962,6 @@ function Radio({ frame }) {
               boxShadow: stationIdx === i ? "2px 3px 0 rgba(138,114,87,.16)" : "none",
             }}
           >
-            <PixelArt name={i % 2 === 0 ? "star" : "leaf"} scale={2} />
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: FONT_DISPLAY, fontSize: 8, color: "#6B5840", marginBottom: 3 }}>{s.name}</div>
               <div style={{ fontSize: 12, color: sub }}>{s.vibe}</div>
@@ -1660,12 +1973,20 @@ function Radio({ frame }) {
         ))}
       </div>
 
-      <div style={{ marginTop: 14, fontSize: 11, textAlign: "center", color: sub, opacity: 0.85 }}>
-        streams via youtube · needs internet ♡
-      </div>
-
-      {/* hidden youtube player */}
-      <div ref={mountRef} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }} />
+      {/* hidden youtube player — fixed off-screen so iframe can't widen the layout */}
+      <div
+        ref={mountRef}
+        style={{
+          position: "fixed",
+          left: -9999,
+          top: 0,
+          width: 0,
+          height: 0,
+          overflow: "hidden",
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      />
     </div>
   );
 }
@@ -1778,7 +2099,7 @@ function StatCard({ label, value }) {
 
 function TabBar({ view, setView, frame }) {
   return (
-    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", background: frame.frame, borderTop: "3px solid rgba(120,95,70,.32)", boxShadow: "0 -2px 0 rgba(138,114,87,.16)" }}>
+    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, width: "100%", display: "flex", background: frame.frame, borderTop: "3px solid rgba(120,95,70,.32)", boxShadow: "0 -2px 0 rgba(138,114,87,.16)", boxSizing: "border-box" }}>
       <TabBtn active={view === "board"} onClick={() => setView("board")} label="board" />
       <TabBtn active={view === "focus"} onClick={() => setView("focus")} label="focus" />
       <TabBtn active={view === "radio"} onClick={() => setView("radio")} label="radio" />
@@ -1788,7 +2109,7 @@ function TabBar({ view, setView, frame }) {
 }
 function TabBtn({ active, onClick, label }) {
   return (
-    <button onClick={onClick} style={{ flex: 1, background: active ? "rgba(255,255,255,.4)" : "transparent", border: "none", padding: "16px 0 14px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontSize: 9, color: "#4A3C2A" }}>
+    <button onClick={onClick} style={{ flex: 1, minWidth: 0, background: active ? "rgba(255,255,255,.4)" : "transparent", border: "none", padding: "16px 4px 14px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontSize: 8, color: "#4A3C2A" }}>
       {label}
     </button>
   );
