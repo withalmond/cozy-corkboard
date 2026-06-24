@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "cross-env NODE_ENV=production vite build && electron-packager . \"cozy corkboard\" --platform=win32 --arch=x64 --out=release --overwrite --ignore=\"release|src|.git\"",
-    "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
+    "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "publish": "powershell -ExecutionPolicy Bypass -File scripts/publish-github.ps1"
   },
   "dependencies": {
     "react": "^18.3.1",
