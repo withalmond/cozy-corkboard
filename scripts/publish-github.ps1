@@ -48,8 +48,13 @@ if (-not $remote) {
 }
 
 Write-Host "[2/2] Creating GitHub release v$version..." -ForegroundColor Yellow
-gh release view "v$version" 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) {
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+gh release view "v$version" *>$null
+$releaseExists = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevEAP
+
+if ($releaseExists) {
     Write-Host "  Release v$version already exists - uploading asset..." -ForegroundColor Yellow
     gh release upload "v$version" $zipPath --clobber
     if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
