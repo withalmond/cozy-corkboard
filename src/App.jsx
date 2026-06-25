@@ -563,17 +563,26 @@ const FOCUS_PRESETS = [
   { min: 50, reward: 42, label: "Deep" },
 ];
 
-/* Long-form YouTube streams — id is the part after v= in the URL */
+/* Long-form YouTube streams — playlist or video id from the share link */
 const RADIO_STATIONS = [
-  { id: "PLLRRXURicM", name: "upbeat daytime lofi", vibe: "bouncy sunny beats", start: 411 },
-  { id: "rIFDqCYMOAQ", name: "late night lofi",     vibe: "chill mellow beats", start: 149 },
-  { id: "gsVT8-Uc1vY", name: "vintage oldies",      vibe: "crafting, tea sipping or studying" },
-  { id: "YgU261Zlkco", name: "night city phonk",    vibe: "deep coding / dev sessions" },
+  { id: "PLLRRXURicM", kind: "playlist", name: "upbeat daytime lofi", vibe: "bouncy sunny beats" },
+  { id: "rIFDqCYMOAQ", kind: "video",    name: "late night lofi",     vibe: "chill mellow beats" },
+  { id: "gsVT8-Uc1vY", kind: "video",    name: "vintage oldies",      vibe: "crafting, tea sipping or studying" },
+  { id: "YgU261Zlkco", kind: "video",    name: "night city phonk",    vibe: "deep coding / dev sessions" },
 ];
 
 const loadRadioVideo = (player, station) => {
-  if (!player?.loadVideoById || !station?.id) return;
-  if (station.start) player.loadVideoById({ videoId: station.id, startSeconds: station.start });
+  if (!player || !station?.id) return;
+  const start = station.start || 0;
+  if (station.kind === "playlist") {
+    if (typeof player.loadPlaylist === "function") {
+      player.loadPlaylist(station.id, 0, start);
+    } else {
+      player.loadVideoById({ listType: "playlist", list: station.id, startSeconds: start });
+    }
+    return;
+  }
+  if (start) player.loadVideoById({ videoId: station.id, startSeconds: start });
   else player.loadVideoById(station.id);
 };
 
@@ -1798,15 +1807,19 @@ function Radio({ frame, onListenTick }) {
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [volume, setVolume] = useState(saved.volume ?? 60);
   const playerRef = useRef(null);
   const mountRef = useRef(null);
   const stationIdxRef = useRef(stationIdx);
   const initStarted = useRef(false);
   const pendingPlay = useRef(false);
+  const loadTimeoutRef = useRef(null);
+  const readyRef = useRef(false);
   const onListenTickRef = useRef(onListenTick);
   onListenTickRef.current = onListenTick;
   stationIdxRef.current = stationIdx;
+  readyRef.current = ready;
 
   const sub = frame.name === "Twilight" ? "#cfc7e6" : "#84714F";
   const station = RADIO_STATIONS[stationIdx] || RADIO_STATIONS[0];
@@ -1827,61 +1840,111 @@ function Radio({ frame, onListenTick }) {
     initStarted.current = false;
   }, []);
 
+  const clearLoadTimeout = () => {
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
+  };
+
+  const resetPlayer = () => {
+    clearLoadTimeout();
+    try { playerRef.current?.destroy?.(); } catch { /* ignore */ }
+    playerRef.current = null;
+    initStarted.current = false;
+    setReady(false);
+    setPlaying(false);
+    setLoading(false);
+    pendingPlay.current = false;
+  };
+
   const createPlayer = () => {
     if (!mountRef.current || playerRef.current) return;
+    const shouldAutoplay = pendingPlay.current;
     playerRef.current = new window.YT.Player(mountRef.current, {
-      height: "1",
-      width: "1",
+      height: "200",
+      width: "200",
       playerVars: {
-        autoplay: 0,
+        autoplay: shouldAutoplay ? 1 : 0,
         controls: 0,
         disablekb: 1,
+        enablejsapi: 1,
         fs: 0,
         modestbranding: 1,
         playsinline: 1,
         rel: 0,
+        iv_load_policy: 3,
       },
       events: {
         onReady: (e) => {
+          clearLoadTimeout();
           setReady(true);
           setLoading(false);
+          setError("");
           e.target.setVolume(volume);
           const s = RADIO_STATIONS[stationIdxRef.current];
           if (s) loadRadioVideo(e.target, s);
           if (pendingPlay.current) {
-            e.target.playVideo();
             pendingPlay.current = false;
+            e.target.playVideo();
           }
         },
         onStateChange: (e) => {
           const YT = window.YT;
-          setPlaying(e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING);
+          const isActive = e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING;
+          setPlaying(isActive);
+          if (isActive) setError("");
+        },
+        onError: (e) => {
+          const codes = { 2: "invalid station", 5: "html5 error", 100: "video not found", 101: "embed blocked", 150: "embed blocked" };
+          setError(codes[e?.data] || "station couldn't load — try another");
+          setLoading(false);
+          resetPlayer();
         },
       },
     });
+  };
+
+  const ensureYouTubeApi = (onReady) => {
+    if (window.YT?.ready) {
+      window.YT.ready(onReady);
+      return;
+    }
+    if (window.YT?.Player) {
+      onReady();
+      return;
+    }
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      onReady();
+    };
+    if (!document.getElementById("yt-iframe-api")) {
+      const s = document.createElement("script");
+      s.id = "yt-iframe-api";
+      s.src = "https://www.youtube.com/iframe_api";
+      s.onerror = () => {
+        setError("couldn't reach youtube — check your internet");
+        setLoading(false);
+        initStarted.current = false;
+      };
+      document.body.appendChild(s);
+    }
   };
 
   const initPlayer = () => {
     if (playerRef.current || initStarted.current) return;
     initStarted.current = true;
     setLoading(true);
-
-    if (window.YT?.Player) {
-      createPlayer();
-      return;
-    }
-
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      prev?.();
-      createPlayer();
-    };
-    if (!document.getElementById("yt-iframe-api")) {
-      const s = document.createElement("script");
-      s.id = "yt-iframe-api";
-      s.src = "https://www.youtube.com/iframe_api";
-      document.body.appendChild(s);
-    }
+    setError("");
+    loadTimeoutRef.current = setTimeout(() => {
+      if (!readyRef.current) {
+        setError("radio took too long — check internet and try again");
+        setLoading(false);
+        initStarted.current = false;
+      }
+    }, 25000);
+    ensureYouTubeApi(createPlayer);
   };
 
   const loadStation = (idx) => {
@@ -1924,6 +1987,9 @@ function Radio({ frame, onListenTick }) {
         <PixelButton color={playing ? "#FCEEB8" : "#BFE3AE"} onClick={togglePlay} disabled={loading} style={{ minWidth: 120, fontSize: 9 }}>
           {loading ? "loading…" : playing ? "❚❚ pause" : "▶ play"}
         </PixelButton>
+        {error && (
+          <div style={{ fontSize: 11, color: "#B85C5C", marginTop: 10, lineHeight: 1.4 }}>{error}</div>
+        )}
       </div>
 
       {/* volume */}
@@ -1980,8 +2046,8 @@ function Radio({ frame, onListenTick }) {
           position: "fixed",
           left: -9999,
           top: 0,
-          width: 0,
-          height: 0,
+          width: 200,
+          height: 200,
           overflow: "hidden",
           opacity: 0,
           pointerEvents: "none",
